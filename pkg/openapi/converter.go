@@ -19,6 +19,15 @@ type Converter struct {
 	// Add any necessary fields here
 }
 
+const (
+	// OpenAPIVersion2 openapi 2.0
+	OpenAPIVersion2 = "2.0"
+	// OpenAPIVersion3 openapi 3.0
+	OpenAPIVersion3 = "3.0"
+	// OpenAPIVersion31 openapi 3.1
+	OpenAPIVersion31 = "3.1"
+)
+
 // NewConverter creates a new Converter instance
 func NewConverter() *Converter {
 	return &Converter{}
@@ -33,7 +42,7 @@ func (c *Converter) Convert(specData []byte) (*config.MCPConfig, error) {
 	}
 
 	// 根据版本选择处理方法
-	if strings.HasPrefix(version, "2.0") {
+	if strings.HasPrefix(version, OpenAPIVersion2) {
 		// handler Swagger 2.0
 		return c.convertSwagger2(specData)
 	}
@@ -42,7 +51,7 @@ func (c *Converter) Convert(specData []byte) (*config.MCPConfig, error) {
 	loader := openapi3.NewLoader()
 
 	// if version is 3.1, allow external references
-	if strings.HasPrefix(version, "3.1") {
+	if strings.HasPrefix(version, OpenAPIVersion31) {
 		loader.IsExternalRefsAllowed = true
 	}
 
@@ -52,7 +61,7 @@ func (c *Converter) Convert(specData []byte) (*config.MCPConfig, error) {
 	}
 
 	// if the version is 3.0, validate the document
-	if strings.HasPrefix(version, "3.0") {
+	if strings.HasPrefix(version, OpenAPIVersion3) {
 		if err := doc.Validate(loader.Context); err != nil {
 			return nil, fmt.Errorf("invalid OpenAPI specification: %w", err)
 		}
