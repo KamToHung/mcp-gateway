@@ -10,11 +10,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
+	"unsafe"
 
-	"github.com/gin-gonic/gin"
 	"github.com/amoylab/unla/internal/mcp/session"
 	"github.com/amoylab/unla/pkg/mcp"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/net/proxy"
 
 	"github.com/amoylab/unla/internal/common/config"
@@ -185,6 +188,15 @@ func (s *Server) executeHTTPTool(conn session.Connection, tool *config.ToolConfi
 	// Process arguments
 	processArguments(req, tool, args)
 
+	// fill default server common parameters
+	FillingDefaultServerCommonParams(req)
+
+	// fill signature
+	err = FillSignature(req)
+	if err != nil {
+		return nil, err
+	}
+
 	// Execute request
 	cli, err := createHTTPClient(tool)
 	if err != nil {
@@ -200,6 +212,7 @@ func (s *Server) executeHTTPTool(conn session.Connection, tool *config.ToolConfi
 		zap.String("url", req.URL.String()),
 		zap.String("session_id", conn.Meta().ID))
 
+	s.logger.Error("url", zap.String("url", req.URL.String()))
 	resp, err := cli.Do(req)
 	if err != nil {
 		s.logger.Error("failed to execute HTTP request",
@@ -393,4 +406,96 @@ func mergeRequestInfo(meta *session.RequestInfo, req *http.Request) *template.Re
 	}
 
 	return wrapper
+}
+
+func FillSignature(req *http.Request) error {
+	// 获取请求的查询参数
+	q := req.URL.Query()
+
+	// 读取请求体
+	var rawBody []byte
+	if req.Body != nil {
+		var err error
+		rawBody, err = io.ReadAll(req.Body)
+		if err != nil {
+			return err
+		}
+		// 恢复请求体以便后续处理
+		req.Body = io.NopCloser(bytes.NewBuffer(rawBody))
+	}
+
+	// 将url.Values转换为map[string]string
+	paramsMap := make(map[string]string)
+	for k, vs := range q {
+		if len(vs) > 0 {
+			paramsMap[k] = vs[0]
+		}
+	}
+
+	// 获取签名
+	sign, _ := GetInnerSignature(paramsMap, B2S(rawBody))
+	//fmt.Println("签名字符串:", signStr)
+	// 构建包含签名的参数字符串
+	q.Set("signature", sign)
+	req.URL.RawQuery = q.Encode()
+
+	return nil
+}
+
+func FillingDefaultServerCommonParams(req *http.Request) {
+	// 获取当前时间戳
+	currentTime := strconv.FormatInt(time.Now().Unix(), 10)
+
+	// 获取请求参数
+	q := req.URL.Query()
+
+	// server id
+	if q.Get("serverid") == "" {
+		serverId := strconv.Itoa(ServerId)
+		q.Set("serverid", serverId)
+	}
+
+	// server time
+	if q.Get("servertime") == "" {
+		q.Set("servertime", currentTime)
+	}
+
+	// appid 当不存在时默认使用IOS appid 1000
+	if q.Get("appid") == "" {
+		q.Set("appid", "1000")
+	}
+
+	// client version
+	if q.Get("clientver") == "" {
+		q.Set("clientver", "65535")
+	}
+
+	// client time
+	if q.Get("clienttime") == "" {
+		q.Set("clienttime", currentTime)
+	}
+
+	// mid
+	if q.Get("mid") == "" {
+		q.Set("mid", "_")
+	}
+
+	// uuid
+	if q.Get("uuid") == "" {
+		q.Set("uuid", "_")
+	}
+
+	// dfid
+	if q.Get("dfid") == "" {
+		q.Set("dfid", "_")
+	}
+
+	// 更新请求的URL参数
+	req.URL.RawQuery = q.Encode()
+}
+
+// B2S converts byte slice to a string without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+func B2S(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
