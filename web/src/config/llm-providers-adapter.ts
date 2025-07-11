@@ -180,7 +180,7 @@ export const buildEndpointURL = (baseURL: string, path: string): string => {
     return cleanBaseURL;
   }
   
-  // Check for partial overlaps (like /v1 in baseURL and /v1/chat/completions in path)
+  // Check for partial overlaps (like /v1 in baseURL and /chat/completions in path)
   const baseURLParts = cleanBaseURL.split('/');
   const pathParts = cleanPath.split('/');
   
